@@ -218,12 +218,7 @@ impl<N: Network> ForkDbStateSnapshot<N> {
         index: U256,
     ) -> Result<U256, DatabaseError> {
         // Check state_snapshot.storage first (data fetched by SharedBackend / disk cache).
-        if let Some(val) = self
-            .state_snapshot
-            .storage
-            .get(&address)
-            .and_then(|s| s.get(&index))
-        {
+        if let Some(val) = self.state_snapshot.storage.get(&address).and_then(|s| s.get(&index)) {
             return Ok(*val);
         }
         // Fall back to the underlying backend (SharedBackend → remote RPC).
