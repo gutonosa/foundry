@@ -211,13 +211,23 @@ pub struct ForkDbStateSnapshot<N: Network> {
 }
 
 impl<N: Network> ForkDbStateSnapshot<N> {
-    fn get_storage(&self, address: Address, index: U256) -> Option<U256> {
-        self.local
-            .cache
-            .accounts
+    /// Lookup storage in `state_snapshot`, then fall back to the backend (remote RPC).
+    fn storage_from_snapshot_or_backend(
+        &self,
+        address: Address,
+        index: U256,
+    ) -> Result<U256, DatabaseError> {
+        // Check state_snapshot.storage first (data fetched by SharedBackend / disk cache).
+        if let Some(val) = self
+            .state_snapshot
+            .storage
             .get(&address)
-            .and_then(|account| account.storage.get(&index))
-            .copied()
+            .and_then(|s| s.get(&index))
+        {
+            return Ok(*val);
+        }
+        // Fall back to the underlying backend (SharedBackend → remote RPC).
+        DatabaseRef::storage_ref(&self.local, address, index)
     }
 }
 
@@ -249,15 +259,9 @@ impl<N: Network> DatabaseRef for ForkDbStateSnapshot<N> {
         match self.local.cache.accounts.get(&address) {
             Some(account) => match account.storage.get(&index) {
                 Some(entry) => Ok(*entry),
-                None => match self.get_storage(address, index) {
-                    None => DatabaseRef::storage_ref(&self.local, address, index),
-                    Some(storage) => Ok(storage),
-                },
+                None => self.storage_from_snapshot_or_backend(address, index),
             },
-            None => match self.get_storage(address, index) {
-                None => DatabaseRef::storage_ref(&self.local, address, index),
-                Some(storage) => Ok(storage),
-            },
+            None => self.storage_from_snapshot_or_backend(address, index),
         }
     }
 
